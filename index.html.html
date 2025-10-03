@@ -1,0 +1,682 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mr. Yu's Mandarin Game Room</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            touch-action: manipulation; /* Improves touch responsiveness */
+        }
+        .screen {
+            display: none;
+        }
+        .screen.active {
+            display: block;
+        }
+        /* Drag and drop styling */
+        .char-tile {
+            cursor: grab;
+            user-select: none;
+            transition: all 0.2s ease-in-out;
+        }
+        .char-tile:active {
+            cursor: grabbing;
+            transform: scale(1.1);
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+            z-index: 10;
+        }
+        .dragging {
+            opacity: 0.5;
+        }
+        .drag-over {
+            border-style: dashed;
+            border-color: #f59e0b;
+        }
+        /* Shake animation for wrong answers */
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            10%, 30%, 50%, 70%, 90% { transform: translateX(-10px); }
+            20%, 40%, 60%, 80% { transform: translateX(10px); }
+        }
+        .shake {
+            animation: shake 0.5s ease-in-out;
+        }
+        /* Confetti particle */
+        .confetti {
+            position: absolute;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            animation: fall 2s linear forwards;
+            pointer-events: none;
+        }
+        @keyframes fall {
+            to {
+                transform: translateY(100vh);
+                opacity: 0;
+            }
+        }
+    </style>
+</head>
+<body class="bg-gradient-to-br from-blue-100 to-teal-100 text-gray-800 flex items-center justify-center min-h-screen">
+
+    <div id="app-container" class="w-full max-w-4xl mx-auto p-4 md:p-6">
+
+        <!-- Menu Screen -->
+        <div id="menu-screen" class="screen active text-center">
+             <div class="mb-8">
+                <h1 class="text-4xl md:text-5xl font-bold text-blue-700" style="font-family: cursive;">Mr. Yu's</h1>
+                <h2 class="text-3xl md:text-4xl font-semibold text-teal-600">Mandarin Game Room</h2>
+            </div>
+            <p class="text-lg text-gray-600 mb-8">请选择一课来练习！<br>Please choose a lesson to practice!</p>
+            <div id="lesson-menu" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                <!-- Lessons will be dynamically inserted here -->
+            </div>
+        </div>
+
+        <!-- Game Screen -->
+        <div id="game-screen" class="screen">
+            <div class="bg-white/80 backdrop-blur-sm rounded-2xl shadow-xl p-6 md:p-8">
+                <div class="flex justify-between items-start mb-4">
+                    <div>
+                        <h1 class="text-xl font-bold text-blue-700" style="font-family: cursive;">Mr. Yu's Mandarin Game Room</h1>
+                        <p id="lesson-title" class="text-lg text-gray-600"></p>
+                        <p id="progress-text" class="text-gray-500 font-medium"></p>
+                        <p id="score-text" class="text-2xl font-bold text-amber-500"></p>
+                    </div>
+                    <button id="back-to-menu" class="bg-gray-200 text-gray-700 hover:bg-gray-300 font-bold py-2 px-4 rounded-full transition-colors flex-shrink-0">&larr; Menu</button>
+                </div>
+                
+                <!-- Answer Drop Zone -->
+                <div id="answer-area" class="min-h-[96px] bg-blue-100/70 rounded-lg p-4 flex flex-wrap gap-3 items-center justify-center mb-4 border-2 border-blue-200">
+                    <!-- Words dropped here will appear -->
+                </div>
+
+                <!-- Scrambled Words Bank -->
+                <div id="word-bank" class="min-h-[96px] bg-gray-50/70 rounded-lg p-4 flex flex-wrap gap-3 items-center justify-center mb-4 border-2 border-gray-200">
+                    <!-- Scrambled words will appear here -->
+                </div>
+
+                <!-- Feedback Message -->
+                <div id="feedback-message" class="text-center min-h-[3rem] flex items-center justify-center text-xl font-semibold mb-4"></div>
+
+                <!-- Hint/Audio Buttons -->
+                <div class="flex flex-col sm:flex-row gap-4 justify-center mb-6">
+                    <button id="hint-button" class="flex items-center justify-center gap-2 w-full sm:w-auto bg-purple-500 hover:bg-purple-600 text-white font-bold py-3 px-6 rounded-full text-lg shadow-lg transition-transform transform hover:scale-105">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" /></svg>
+                        Hint
+                    </button>
+                    <button id="speak-button" class="flex items-center justify-center gap-2 w-full sm:w-auto bg-sky-500 hover:bg-sky-600 text-white font-bold py-3 px-6 rounded-full text-lg shadow-lg transition-transform transform hover:scale-105">
+                         <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" /></svg>
+                        Speak
+                    </button>
+                </div>
+
+                <!-- Action Buttons -->
+                <div class="flex flex-col sm:flex-row gap-4 justify-center">
+                    <button id="reset-button" class="w-full sm:w-auto bg-yellow-400 hover:bg-yellow-500 text-yellow-900 font-bold py-3 px-8 rounded-full text-lg shadow-lg transition-transform transform hover:scale-105">Reset</button>
+                    <button id="check-button" class="w-full sm:w-auto bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-8 rounded-full text-lg shadow-lg transition-transform transform hover:scale-105">Check Answer</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- End Screen -->
+        <div id="end-screen" class="screen text-center">
+            <div class="bg-gradient-to-br from-green-200 to-blue-200 rounded-2xl shadow-xl p-8 md:p-12">
+                <h2 class="text-4xl font-bold text-green-600 mb-4">太棒了！</h2>
+                <h3 class="text-2xl font-bold text-green-800 mb-6">Lesson Complete!</h3>
+                <p id="final-score" class="text-3xl font-bold text-amber-600 mb-8"></p>
+                <p class="text-lg text-gray-700 mb-8">You did an amazing job. Keep practicing!</p>
+                <button id="play-again-button" class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 px-10 rounded-full text-lg shadow-xl transition-transform transform hover:scale-105">Play Another Lesson</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const lessonsData = {
+                25: { title: "它们在哪里？", sentences: [
+                    { chinese: "本子在哪里？", english: "Where is the notebook?" },
+                    { chinese: "本子在桌子上面。", english: "The notebook is on the table." },
+                    { chinese: "书包在哪里？", english: "Where is the schoolbag?" },
+                    { chinese: "书包在椅子下面。", english: "The schoolbag is under the chair." },
+                    { chinese: "苹果在哪里？", english: "Where is the apple?" },
+                    { chinese: "苹果在冰箱里面。", english: "The apple is inside the refrigerator." },
+                    { chinese: "西瓜在哪里？", english: "Where is the watermelon?" },
+                    { chinese: "西瓜在冰箱外面。", english: "The watermelon is outside the refrigerator." },
+                    { chinese: "小老鼠在哪里？", english: "Where is the little mouse?" },
+                    { chinese: "小老鼠在电脑前面。", english: "The little mouse is in front of the computer." },
+                    { chinese: "小猫在哪里？", english: "Where is the little cat?" },
+                    { chinese: "小猫在电脑后面。", english: "The little cat is behind the computer." },
+                    { chinese: "椅子在桌子前面。", english: "The chair is in front of the table." },
+                    { chinese: "电脑在桌子上面。", english: "The computer is on the table." },
+                    { chinese: "书包在椅子上面。", english: "The schoolbag is on the chair." },
+                    { chinese: "苹果在椅子下面。", english: "The apple is under the chair." },
+                    { chinese: "小猫在冰箱前面。", english: "The cat is in front of the refrigerator." },
+                    { chinese: "西瓜在桌子上面。", english: "The watermelon is on the table." }
+                ]},
+                26: { title: "她的爸爸做什么工作？", sentences: [
+                    { chinese: "她的爸爸是商人。", english: "Her dad is a businessman." },
+                    { chinese: "她的妈妈是老师。", english: "Her mom is a teacher." },
+                    { chinese: "她的爷爷是医生。", english: "Her grandpa is a doctor." },
+                    { chinese: "她的奶奶是家庭主妇。", english: "Her grandma is a housewife." },
+                    { chinese: "她的哥哥是中学生。", english: "Her older brother is a middle school student." },
+                    { chinese: "她是小学生。", english: "She is an elementary school student." },
+                    { chinese: "他们是中国人。", english: "They are Chinese people." },
+                    { chinese: "她的爸爸喜欢跑步。", english: "Her dad likes to run." },
+                    { chinese: "她的妈妈喜欢打网球。", english: "Her mom likes to play tennis." },
+                    { chinese: "她的哥哥喜欢打篮球。", english: "Her older brother likes to play basketball." },
+                    { chinese: "小文喜欢游泳。", english: "Xiaowen likes to swim." },
+                    { chinese: "哥哥是医生。", english: "Older brother is a doctor." },
+                    { chinese: "爸爸是老师。", english: "Dad is a teacher." },
+                    { chinese: "妈妈喜欢游泳。", english: "Mom likes to swim." },
+                    { chinese: "爷爷喜欢跑步。", english: "Grandpa likes to run." },
+                    { chinese: "老师喜欢打篮球。", english: "The teacher likes to play basketball." },
+                    { chinese: "商人喜欢做什么？", english: "What do businessmen like to do?" }
+                ]},
+                27: { title: "我的一天", sentences: [
+                    { chinese: "现在几点了？", english: "What time is it now?" },
+                    { chinese: "现在六点了。", english: "It's six o'clock now." },
+                    { chinese: "现在八点半了。", english: "It's eight-thirty now." },
+                    { chinese: "现在两点十五分了。", english: "It's two-fifteen now." },
+                    { chinese: "我早上六点半起床。", english: "I get up at 6:30 in the morning." },
+                    { chinese: "我七点吃早饭。", english: "I eat breakfast at 7:00." },
+                    { chinese: "我七点四十五分上学。", english: "I go to school at 7:45." },
+                    { chinese: "我下午三点二十分放学。", english: "I get out of school at 3:20 PM." },
+                    { chinese: "我下午四点半做功课。", english: "I do my homework at 4:30 PM." },
+                    { chinese: "我晚上九点睡觉。", english: "I go to sleep at 9:00 at night." },
+                    { chinese: "你几点睡觉？", english: "What time do you go to sleep?" },
+                    { chinese: "我早上七点起床。", english: "I get up at 7:00 in the morning." },
+                    { chinese: "你下午做什么？", english: "What do you do in the afternoon?" },
+                    { chinese: "我晚上做功课。", english: "I do homework in the evening." },
+                    { chinese: "他六点吃早饭。", english: "He eats breakfast at 6:00." },
+                    { chinese: "你几点上学？", english: "What time do you go to school?" }
+                ]},
+                28: { title: "这是谁的房间？", sentences: [
+                    { chinese: "这是谁的房间？", english: "Whose room is this?" },
+                    { chinese: "这是我的房间。", english: "This is my room." },
+                    { chinese: "我的房间很大。", english: "My room is very big." },
+                    { chinese: "它是蓝色的。", english: "It is blue." },
+                    { chinese: "哥哥现在不喜欢玩具。", english: "Older brother doesn't like toys now." },
+                    { chinese: "他喜欢玩电脑、打篮球。", english: "He likes to play on the computer and play basketball." },
+                    { chinese: "我很喜欢我的房间。", english: "I like my room very much." },
+                    { chinese: "他的房间是绿色的。", english: "His room is green." },
+                    { chinese: "我的房间没有沙发。", english: "My room doesn't have a sofa." },
+                    { chinese: "桌子是蓝色的。", english: "The table is blue." },
+                    { chinese: "他喜欢蓝色的床。", english: "He likes the blue bed." },
+                    { chinese: "谁的房间很大？", english: "Whose room is very big?" },
+                    { chinese: "房间里有椅子。", english: "There is a chair in the room." }
+                ]},
+                29: { title: "他们在做什么？", sentences: [
+                    { chinese: "今天是星期天。", english: "Today is Sunday." },
+                    { chinese: "爸爸和妈妈在看电视。", english: "Dad and Mom are watching TV." },
+                    { chinese: "姐姐和妹妹在看书。", english: "The older and younger sisters are reading." },
+                    { chinese: "弟弟在玩电脑游戏。", english: "Younger brother is playing computer games." },
+                    { chinese: "白大卫在做功课。", english: "David Bai is doing homework." },
+                    { chinese: "小狗在做什么？", english: "What is the dog doing?" },
+                    { chinese: "它在听音乐。", english: "It is listening to music." },
+                    { chinese: "小猫在做什么？", english: "What is the cat doing?" },
+                    { chinese: "它在睡觉。", english: "It is sleeping." },
+                    { chinese: "小鱼在做什么？", english: "What is the fish doing?" },
+                    { chinese: "爸爸在看书。", english: "Dad is reading a book." },
+                    { chinese: "妈妈在听音乐。", english: "Mom is listening to music." },
+                    { chinese: "他们在看电视。", english: "They are watching TV." },
+                    { chinese: "弟弟在做什么？", english: "What is the younger brother doing?" }
+                ]},
+                30: { title: "打电话", sentences: [
+                    { chinese: "你好！请问，你找谁？", english: "Hello! Who are you looking for?" },
+                    { chinese: "我找李大中。", english: "I'm looking for Li Dazhong." },
+                    { chinese: "请问，他在吗？", english: "Excuse me, is he in?" },
+                    { chinese: "在，请等一下。", english: "Yes, please wait a moment." },
+                    { chinese: "对不起，我明天没空。", english: "Sorry, I'm not free tomorrow." },
+                    { chinese: "没关系。", english: "It's okay / No problem." },
+                    { chinese: "可以。", english: "Okay / Can do." },
+                    { chinese: "谢谢你打电话来。", english: "Thank you for calling." },
+                    { chinese: "不客气。", english: "You're welcome." },
+                    { chinese: "再见！", english: "Goodbye!" },
+                    { chinese: "你的电话几号？", english: "What is your phone number?" },
+                    { chinese: "我明天有空。", english: "I am free tomorrow." },
+                    { chinese: "请问，你好吗？", english: "Excuse me, how are you?" },
+                    { chinese: "谢谢你，再见。", english: "Thank you, goodbye." }
+                ]},
+                31: { title: "你今天上了什么课？", sentences: [
+                    { chinese: "你今天上了什么课？", english: "What classes did you have today?" },
+                    { chinese: "我每天的课都不太一样。", english: "My classes are different every day." },
+                    { chinese: "你每天都有中文课吗？", english: "Do you have Chinese class every day?" },
+                    { chinese: "我每天都有中文课。", english: "I have Chinese class every day." },
+                    { chinese: "我最喜欢上电脑课。", english: "I like computer class the most." },
+                    { chinese: "电脑课没有功课。", english: "There is no homework in computer class." },
+                    { chinese: "我今天上了数学课。", english: "I had math class today." },
+                    { chinese: "他最喜欢上体育课。", english: "He likes gym class the most." },
+                    { chinese: "我们每天都有功课。", english: "We have homework every day." },
+                    { chinese: "你喜欢上什么课？", english: "What class do you like to take?" }
+                ]},
+                32: { title: "我用眼睛看一看", sentences: [
+                    { chinese: "我用眼睛看一看。", english: "I use my eyes to look." },
+                    { chinese: "我用鼻子闻一闻。", english: "I use my nose to smell." },
+                    { chinese: "我用嘴巴说一说。", english: "I use my mouth to speak." },
+                    { chinese: "我用牙齿咬一咬。", english: "I use my teeth to bite." },
+                    { chinese: "我用耳朵听一听。", english: "I use my ears to listen." },
+                    { chinese: "我用双手拍一拍。", english: "I use my hands to clap." },
+                    { chinese: "我用双脚走一走。", english: "I use my feet to walk." },
+                    { chinese: "它的眼睛很大，很可爱。", english: "Its eyes are very big and very cute." },
+                    { chinese: "他用嘴巴看一看。", english: "He uses his mouth to look." },
+                    { chinese: "她用鼻子听一听。", english: "She uses her nose to listen." },
+                    { chinese: "小狗的牙齿很可爱。", english: "The puppy's teeth are very cute." },
+                    { chinese: "我用眼睛看小狗。", english: "I use my eyes to look at the puppy." }
+                ]},
+                33: { title: "这是李老师的家", sentences: [
+                    { chinese: "这是李老师的家。", english: "This is Teacher Li's house." },
+                    { chinese: "客厅在右边。", english: "The living room is on the right side." },
+                    { chinese: "起居室在左边。", english: "The family room is on the left side." },
+                    { chinese: "我喜欢李老师的家。", english: "I like Teacher Li's house." },
+                    { chinese: "李老师喜欢在起居室里看电视。", english: "Teacher Li likes to watch TV in the family room." },
+                    { chinese: "主卧室的床是蓝色的。", english: "The bed in the master bedroom is blue." },
+                    { chinese: "不要忘了关灯。", english: "Don't forget to turn off the lights." },
+                    { chinese: "书房在左边。", english: "The study is on the left." },
+                    { chinese: "厨房在后面。", english: "The kitchen is in the back." },
+                    { chinese: "他的卧室是蓝色的。", english: "His bedroom is blue." },
+                    { chinese: "客厅里有沙发。", english: "There is a sofa in the living room." }
+                ]},
+                34: { title: "动物园", sentences: [
+                    { chinese: "我们看见了很多动物。", english: "We saw many animals." },
+                    { chinese: "我最喜欢大熊猫。", english: "I like giant pandas the most." },
+                    { chinese: "因为它又可爱又漂亮。", english: "Because it is cute and beautiful." },
+                    { chinese: "它有白色的毛。", english: "It has white fur." },
+                    { chinese: "它有黑色的眼睛。", english: "It has black eyes." },
+                    { chinese: "它有小小的耳朵。", english: "It has small ears." },
+                    { chinese: "它有大大的嘴巴。", english: "It has a big mouth." },
+                    { chinese: "它有胖胖的身体。", english: "It has a chubby body." },
+                    { chinese: "动物园有很多动物。", english: "The zoo has many animals." },
+                    { chinese: "大熊猫有黑色的毛。", english: "The giant panda has black fur." },
+                    { chinese: "长颈鹿的脖子很长。", english: "The giraffe's neck is very long." },
+                    { chinese: "我喜欢可爱的动物。", english: "I like cute animals." }
+                ]},
+                35: { title: "请你来我家玩", sentences: [
+                    { chinese: "明天是星期六，你有空吗？", english: "Tomorrow is Saturday, are you free?" },
+                    { chinese: "明天是我的生日。", english: "Tomorrow is my birthday." },
+                    { chinese: "我们玩什么呢？", english: "What will we play?" },
+                    { chinese: "我们先游泳，再玩电脑游戏。", english: "We will swim first, then play computer games." },
+                    { chinese: "我们一起看电视。", english: "We will watch TV together." },
+                    { chinese: "你住在哪里？", english: "Where do you live?" },
+                    { chinese: "我住在小学路32号。", english: "I live at 32 Xiaoxue Road." },
+                    { chinese: "明天见！", english: "See you tomorrow!" },
+                    { chinese: "大卫和小文是好朋友。", english: "David and Xiaowen are good friends." },
+                    { chinese: "你有空吗？", english: "Are you free?" },
+                    { chinese: "我们一起玩电脑游戏。", english: "Let's play computer games together." },
+                    { chinese: "明天是星期天。", english: "Tomorrow is Sunday." },
+                    { chinese: "我的好朋友住在这里。", english: "My good friend lives here." }
+                ]},
+                36: { title: "到中国饭馆吃饭", sentences: [
+                    { chinese: "欢迎光临！几位？", english: "Welcome! How many people?" },
+                    { chinese: "三位。", english: "Three people." },
+                    { chinese: "你们要喝什么饮料？", english: "What drinks would you like to have?" },
+                    { chinese: "我要橙汁。", english: "I want orange juice." },
+                    { chinese: "我要冰水。", english: "I want ice water." },
+                    { chinese: "我要苹果汁。", english: "I want apple juice." },
+                    { chinese: "这是菜单，请点菜。", english: "Here is the menu, please order." },
+                    { chinese: "我要西兰花。", english: "I want broccoli." },
+                    { chinese: "我要古老肉。", english: "I want sweet and sour pork." },
+                    { chinese: "我要宫保鸡丁。", english: "I want Kung Pao chicken." },
+                    { chinese: "请给我们米饭。", english: "Please give us rice." },
+                    { chinese: "小姐，请结账。", english: "Miss, the bill please." },
+                    { chinese: "一共多少钱？", english: "How much is it in total?" },
+                    { chinese: "我们一家人都爱吃中国菜。", english: "Our whole family loves to eat Chinese food." },
+                    { chinese: "请给我冰水。", english: "Please give me ice water." },
+                    { chinese: "中国饭馆的菜很好吃。", english: "The food at the Chinese restaurant is delicious." },
+                    { chinese: "我们要点什么菜？", english: "What dishes should we order?" }
+                ]},
+                'hsk-choice': { title: "HSK Levels 1-3", sentences: [
+                    { chinese: "你好。", english: "Hello." },
+                    { chinese: "谢谢你。", english: "Thank you." },
+                    { chinese: "不客气。", english: "You're welcome." },
+                    { chinese: "对不起。", english: "I'm sorry." },
+                    { chinese: "没关系。", english: "It's okay." },
+                    { chinese: "我叫李月。", english: "My name is Li Yue." },
+                    { chinese: "你是学生吗？", english: "Are you a student?" },
+                    { chinese: "我是医生。", english: "I am a doctor." },
+                    { chinese: "他住在北京。", english: "He lives in Beijing." },
+                    { chinese: "我们是好朋友。", english: "We are good friends." },
+                    { chinese: "今天是星期一。", english: "Today is Monday." },
+                    { chinese: "现在几点了？", english: "What time is it?" },
+                    { chinese: "我想喝水。", english: "I want to drink water." },
+                    { chinese: "你喜欢吃什么？", english: "What do you like to eat?" },
+                    { chinese: "我喜欢吃米饭。", english: "I like to eat rice." },
+                    { chinese: "这个多少钱？", english: "How much is this?" },
+                    { chinese: "太贵了。", english: "It's too expensive." },
+                    { chinese: "我会说汉语。", english: "I can speak Chinese." },
+                    { chinese: "你家有几个人？", english: "How many people are in your family?" },
+                    { chinese: "我家有三个人。", english: "There are three people in my family." },
+                    { chinese: "他是我的爸爸。", english: "He is my dad." },
+                    { chinese: "她是我的妈妈。", english: "She is my mom." },
+                    { chinese: "我爱我的家人。", english: "I love my family." },
+                    { chinese: "我在学校学习。", english: "I study at school." },
+                    { chinese: "苹果是红色的。", english: "Apples are red." },
+                    { chinese: "我看见一只猫。", english: "I see a cat." },
+                    { chinese: "小狗很可爱。", english: "The puppy is very cute." },
+                    { chinese: "今天天气很好。", english: "The weather is very good today." },
+                    { chinese: "明天会下雨。", english: "It will rain tomorrow." },
+                    { chinese: "我想去商店。", english: "I want to go to the store." },
+                    { chinese: "你在做什么？", english: "What are you doing?" },
+                    { chinese: "我在看书。", english: "I am reading a book." },
+                    { chinese: "他正在打电话。", english: "He is making a phone call." },
+                    { chinese: "飞机下午三点起飞。", english: "The plane takes off at 3 PM." },
+                    { chinese: "我每天早上跑步。", english: "I run every morning." },
+                    { chinese: "他比我高。", english: "He is taller than me." },
+                    { chinese: "这个房间很干净。", english: "This room is very clean." },
+                    { chinese: "你为什么迟到了？", english: "Why are you late?" },
+                    { chinese: "因为我起晚了。", english: "Because I got up late." },
+                    { chinese: "这本书很有意思。", english: "This book is very interesting." },
+                    { chinese: "我觉得汉语不难。", english: "I think Chinese is not difficult." },
+                    { chinese: "他游得很快。", english: "He swims very fast." },
+                    { chinese: "你什么时候回来？", english: "When will you come back?" },
+                    { chinese: "我下个星期回来。", english: "I will come back next week." },
+                    { chinese: "请坐。", english: "Please sit." },
+                    { chinese: "别说话。", english: "Don't talk." },
+                    { chinese: "你能帮助我吗？", english: "Can you help me?" },
+                    { chinese: "当然可以。", english: "Of course, I can." },
+                    { chinese: "他把作业做完了。", english: "He finished his homework." },
+                    { chinese: "我的电脑坏了。", english: "My computer is broken." },
+                    { chinese: "桌子上有一本书。", english: "There is a book on the table." },
+                    { chinese: "他想买一个新手机。", english: "He wants to buy a new phone." },
+                    { chinese: "我们一起去看电影吧。", english: "Let's go watch a movie together." },
+                    { chinese: "他家离公司很远。", english: "His home is far from the company." },
+                    { chinese: "我喜欢听音乐。", english: "I like listening to music." },
+                    { chinese: "你认识他吗？", english: "Do you know him?" },
+                    { chinese: "我认识他两年了。", english: "I have known him for two years." },
+                    { chinese: "这件衣服很漂亮。", english: "This piece of clothing is very beautiful." },
+                    { chinese: "服务员，请来一杯咖啡。", english: "Waiter, please bring a cup of coffee." },
+                    { chinese: "他笑着对我说你好。", english: "He smiled and said hello to me." },
+                    { chinese: "外面风很大。", english: "It's very windy outside." },
+                    { chinese: "请不要在教室里跑。", english: "Please don't run in the classroom." },
+                    { chinese: "这个问题有点难。", english: "This question is a bit difficult." },
+                    { chinese: "他对画画很感兴趣。", english: "He is very interested in painting." },
+                    { chinese: "如果明天天气好，我们就去公园。", english: "If the weather is good tomorrow, we will go to the park." },
+                    { chinese: "虽然下雨了，但是他还是去上班了。", english: "Although it was raining, he still went to work." },
+                    { chinese: "他不但聪明，而且很努力。", english: "He is not only smart, but also very hardworking." },
+                    { chinese: "你把窗户关上吧。", english: "Please close the window." },
+                    { chinese: "我需要你的帮助。", english: "I need your help." },
+                    { chinese: "他决定去中国留学。", english: "He decided to study abroad in China." },
+                    { chinese: "这个城市的环境很好。", english: "The environment of this city is very good." },
+                    { chinese: "我希望明天是晴天。", english: "I hope tomorrow is a sunny day." },
+                    { chinese: "他对这个工作很满意。", english: "He is very satisfied with this job." },
+                    { chinese: "他终于完成了这个任务。", english: "He finally completed this task." },
+                    { chinese: "我们应该互相学习。", english: "We should learn from each other." },
+                    { chinese: "他对别人很热情。", english: "He is very enthusiastic towards others." },
+                    { chinese: "妹妹害怕黑。", english: "Little sister is afraid of the dark." },
+                    { chinese: "我把面包放在冰箱里了。", english: "I put the bread in the refrigerator." },
+                    { chinese: "爷爷喜欢看报纸。", english: "Grandpa likes to read the newspaper." },
+                    { chinese: "他是一位历史老师。", english: "He is a history teacher." },
+                    { chinese: "这个西瓜真甜。", english: "This watermelon is really sweet." },
+                    { chinese: "请安静，图书馆里不能大声说话。", english: "Please be quiet, you cannot speak loudly in the library." },
+                    { chinese: "你饿了吗？", english: "Are you hungry?" },
+                    { chinese: "我渴了，想喝杯果汁。", english: "I'm thirsty and want to drink a glass of juice." },
+                    { chinese: "他每天都锻炼身体。", english: "He exercises every day." },
+                    { chinese: "今天我有点累。", english: "I'm a little tired today." },
+                    { chinese: "我的护照过期了。", english: "My passport has expired." },
+                    { chinese: "我们坐电梯上楼吧。", english: "Let's take the elevator upstairs." },
+                    { chinese: "他发了一个电子邮件给我。", english: "He sent me an email." },
+                    { chinese: "叔叔是一位经理。", english: "Uncle is a manager." },
+                    { chinese: "阿姨喜欢跳舞。", english: "Auntie likes to dance." },
+                    { chinese: "我几乎忘了这件事。", english: "I almost forgot about this matter." },
+                    { chinese: "他对自己的要求很高。", english: "He has high standards for himself." },
+                    { chinese: "我相信你会成功的。", english: "I believe you will succeed." },
+                    { chinese: "我们必须准时出发。", english: "We must depart on time." },
+                    { chinese: "请把空调打开。", english: "Please turn on the air conditioner." },
+                    { chinese: "我打算下个月去旅游。", english: "I plan to travel next month." },
+                    { chinese: "他一边吃饭一边看手机。", english: "He eats while looking at his phone." },
+                    { chinese: "除了足球，他还喜欢篮球。", english: "Besides football, he also likes basketball." },
+                    { chinese: "这双鞋不大也不小，很合适。", english: "This pair of shoes is not too big or too small, it's just right." },
+                    { chinese: "不用担心，我会帮你。", english: "Don't worry, I will help you." },
+                    { chinese: "他高兴地笑了。", english: "He laughed happily." }
+                ]}
+            };
+
+            const screens = { menu: document.getElementById('menu-screen'), game: document.getElementById('game-screen'), end: document.getElementById('end-screen'), };
+            const lessonMenu = document.getElementById('lesson-menu');
+            const lessonTitleEl = document.getElementById('lesson-title');
+            const progressTextEl = document.getElementById('progress-text');
+            const scoreTextEl = document.getElementById('score-text');
+            const wordBankEl = document.getElementById('word-bank');
+            const answerAreaEl = document.getElementById('answer-area');
+            const checkButton = document.getElementById('check-button');
+            const resetButton = document.getElementById('reset-button');
+            const feedbackMessageEl = document.getElementById('feedback-message');
+            const backToMenuButton = document.getElementById('back-to-menu');
+            const playAgainButton = document.getElementById('play-again-button');
+            const speakButton = document.getElementById('speak-button');
+            const hintButton = document.getElementById('hint-button');
+            const finalScoreEl = document.getElementById('final-score');
+
+            const tileColors = ['bg-sky-500', 'bg-emerald-500', 'bg-amber-500', 'bg-violet-500', 'bg-rose-500'];
+            const menuColors = ['bg-blue-100', 'bg-green-100', 'bg-yellow-100', 'bg-purple-100', 'bg-pink-100', 'bg-red-100'];
+
+            let currentLessonId = null, questions = [], currentQuestionIndex = 0, questionsToReview = [], errorCounts = {}, isReviewing = false, draggedItem = null, score = 0;
+
+            function init() {
+                renderMenu(); addEventListeners(); setupDragAndDrop();
+            }
+
+            function showScreen(screenName) {
+                Object.values(screens).forEach(screen => screen.classList.remove('active'));
+                screens[screenName].classList.add('active');
+            }
+
+            function renderMenu() {
+                lessonMenu.innerHTML = '';
+                Object.keys(lessonsData).forEach((id, index) => {
+                    const lesson = lessonsData[id];
+                    const button = document.createElement('button');
+                    const colorClass = menuColors[index % menuColors.length];
+                    button.className = `p-6 rounded-lg shadow-md hover:shadow-xl transition-all transform hover:-translate-y-1 text-left ${colorClass} hover:brightness-105`;
+                    
+                    let label, title;
+                    if (id === 'hsk-choice') {
+                        label = "Player's Choice";
+                        title = lesson.title;
+                    } else {
+                        label = `Lesson ${id}`;
+                        title = lesson.title;
+                    }
+                    button.innerHTML = `<div class="text-sm text-blue-500 font-semibold">${label}</div><div class="text-lg font-bold text-gray-800">${title}</div>`;
+
+                    button.onclick = () => startGame(id);
+                    lessonMenu.appendChild(button);
+                });
+            }
+
+            function startGame(lessonId) {
+                currentLessonId = lessonId;
+                const originalSentences = lessonsData[lessonId].sentences.map(s => ({ ...s }));
+                questions = shuffleArray(originalSentences);
+                currentQuestionIndex = 0;
+                questionsToReview = [];
+                errorCounts = {};
+                isReviewing = false;
+                score = 0;
+                
+                if (lessonId === 'hsk-choice') {
+                    lessonTitleEl.textContent = `Player's Choice: ${lessonsData[lessonId].title}`;
+                } else {
+                    lessonTitleEl.textContent = `Lesson ${lessonId}: ${lessonsData[lessonId].title}`;
+                }
+                
+                updateScoreDisplay();
+                showScreen('game');
+                loadQuestion();
+            }
+
+            function loadQuestion() {
+                if (currentQuestionIndex >= questions.length) {
+                    if (questionsToReview.length > 0 && !isReviewing) {
+                        isReviewing = true;
+                        questions = shuffleArray([...questionsToReview]);
+                        questionsToReview = [];
+                        currentQuestionIndex = 0;
+                        feedbackMessageEl.textContent = 'Let\'s review the ones you missed!';
+                        feedbackMessageEl.className = "text-center min-h-[3rem] flex items-center justify-center text-xl font-semibold text-blue-600";
+                        setTimeout(loadQuestion, 2000);
+                    } else {
+                        finalScoreEl.textContent = `Final Score: ${score}`;
+                        showScreen('end');
+                    }
+                    return;
+                }
+                resetFeedback();
+                const currentSentenceObject = questions[currentQuestionIndex];
+                const characters = currentSentenceObject.chinese.split('');
+                const shuffledCharacters = shuffleArray([...characters]);
+                wordBankEl.innerHTML = '';
+                answerAreaEl.innerHTML = '';
+                shuffledCharacters.forEach(char => wordBankEl.appendChild(createWordTile(char)));
+                updateProgress();
+            }
+
+            function createWordTile(char) {
+                const tile = document.createElement('div');
+                const colorClass = tileColors[Math.floor(Math.random() * tileColors.length)];
+                tile.textContent = char;
+                tile.className = `char-tile text-white font-bold rounded-lg shadow-md text-2xl w-14 h-14 flex items-center justify-center ${colorClass}`;
+                tile.draggable = true;
+                return tile;
+            }
+
+            function checkAnswer() {
+                const userAnswer = Array.from(answerAreaEl.children).map(item => item.textContent).join('');
+                const correctAnswer = questions[currentQuestionIndex].chinese;
+                if (userAnswer === correctAnswer) {
+                    handleCorrectAnswer();
+                } else {
+                    handleIncorrectAnswer();
+                }
+            }
+
+            function handleCorrectAnswer() {
+                feedbackMessageEl.textContent = "Correct! 太棒了！";
+                feedbackMessageEl.className = "text-center min-h-[3rem] flex items-center justify-center text-xl font-semibold text-green-500";
+                score += 10;
+                updateScoreDisplay();
+                launchConfetti();
+                currentQuestionIndex++;
+                setTimeout(loadQuestion, 1500);
+            }
+
+            function handleIncorrectAnswer() {
+                const sentenceObject = questions[currentQuestionIndex];
+                const sentence = sentenceObject.chinese;
+                errorCounts[sentence] = (errorCounts[sentence] || 0) + 1;
+                answerAreaEl.classList.add('shake');
+                setTimeout(() => answerAreaEl.classList.remove('shake'), 500);
+                if (errorCounts[sentence] >= 2) {
+                    feedbackMessageEl.innerHTML = `Not quite. The answer is:<br><strong class="text-blue-600">${sentence}</strong>`;
+                    feedbackMessageEl.className = "text-center min-h-[3rem] flex items-center justify-center text-xl font-semibold text-red-500 leading-tight";
+                    if (!questionsToReview.some(item => item.chinese === sentence)) {
+                        questionsToReview.push(sentenceObject);
+                    }
+                    currentQuestionIndex++;
+                    setTimeout(loadQuestion, 3000);
+                } else {
+                    feedbackMessageEl.textContent = "Not quite, try again! 再试一次！";
+                    feedbackMessageEl.className = "text-center min-h-[3rem] flex items-center justify-center text-xl font-semibold text-yellow-600";
+                }
+            }
+
+            function resetCurrentQuestion() {
+                Array.from(answerAreaEl.children).forEach(item => wordBankEl.appendChild(item));
+                resetFeedback();
+            }
+
+            function resetFeedback() {
+                feedbackMessageEl.textContent = '';
+                feedbackMessageEl.className = "text-center min-h-[3rem] flex items-center justify-center text-xl font-semibold";
+            }
+
+            function updateProgress() {
+                const total = lessonsData[currentLessonId].sentences.length;
+                let currentNumText;
+                if (isReviewing) {
+                     currentNumText = `Reviewing ${currentQuestionIndex + 1} of ${questions.length}`;
+                } else {
+                    currentNumText = `Question ${currentQuestionIndex + 1} of ${total}`;
+                }
+                progressTextEl.textContent = currentNumText;
+            }
+
+            function updateScoreDisplay() {
+                scoreTextEl.textContent = `Score: ${score}`;
+            }
+            
+            function speakSentence() {
+                if (!questions[currentQuestionIndex] || typeof SpeechSynthesisUtterance === 'undefined') return;
+                const sentence = questions[currentQuestionIndex].chinese;
+                const utterance = new SpeechSynthesisUtterance(sentence);
+                utterance.lang = 'zh-CN';
+                utterance.rate = 0.8;
+                speechSynthesis.speak(utterance);
+            }
+
+            function showHint() {
+                if (!questions[currentQuestionIndex]) return;
+                const hint = questions[currentQuestionIndex].english;
+                feedbackMessageEl.textContent = `Hint: ${hint}`;
+                feedbackMessageEl.className = "text-center min-h-[3rem] flex items-center justify-center text-xl font-semibold text-purple-600";
+            }
+
+            function shuffleArray(array) {
+                for (let i = array.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1));[array[i], array[j]] = [array[j], array[i]]; }
+                return array;
+            }
+
+            function launchConfetti() {
+                const container = document.getElementById('app-container');
+                const colors = ['#f59e0b', '#10b981', '#3b82f6', '#ef4444', '#8b5cf6'];
+                for (let i = 0; i < 50; i++) {
+                    const confetti = document.createElement('div');
+                    confetti.classList.add('confetti');
+                    confetti.style.left = Math.random() * 100 + 'vw';
+                    confetti.style.top = '-20px';
+                    confetti.style.backgroundColor = colors[Math.floor(Math.random() * colors.length)];
+                    confetti.style.animationDelay = Math.random() * 0.5 + 's';
+                    container.appendChild(confetti);
+                    setTimeout(() => confetti.remove(), 2000);
+                }
+            }
+
+            function addEventListeners() {
+                checkButton.addEventListener('click', checkAnswer);
+                resetButton.addEventListener('click', resetCurrentQuestion);
+                backToMenuButton.addEventListener('click', () => showScreen('menu'));
+                playAgainButton.addEventListener('click', () => showScreen('menu'));
+                speakButton.addEventListener('click', speakSentence);
+                hintButton.addEventListener('click', showHint);
+            }
+
+            function setupDragAndDrop() {
+                document.body.addEventListener('dragstart', e => { if (e.target.classList.contains('char-tile')) { draggedItem = e.target; setTimeout(() => e.target.classList.add('dragging'), 0); } });
+                document.body.addEventListener('dragend', () => { if (draggedItem) { draggedItem.classList.remove('dragging'); draggedItem = null; } });
+                [wordBankEl, answerAreaEl].forEach(container => {
+                    container.addEventListener('dragover', e => { e.preventDefault(); container.classList.add('drag-over'); if (draggedItem) { const afterElement = getDragAfterElement(container, e.clientY); if (afterElement == null) { container.appendChild(draggedItem); } else { container.insertBefore(draggedItem, afterElement); } } });
+                    container.addEventListener('dragleave', () => container.classList.remove('drag-over'));
+                    container.addEventListener('drop', e => { e.preventDefault(); container.classList.remove('drag-over'); });
+                });
+            }
+
+            function getDragAfterElement(container, y) {
+                const draggableElements = [...container.querySelectorAll('.char-tile:not(.dragging)')];
+                return draggableElements.reduce((closest, child) => {
+                    const box = child.getBoundingClientRect();
+                    const offset = y - box.top - box.height / 2;
+                    if (offset < 0 && offset > closest.offset) { return { offset: offset, element: child }; } else { return closest; }
+                }, { offset: Number.NEGATIVE_INFINITY }).element;
+            }
+
+            init();
+        });
+    </script>
+</body>
+</html>
+
